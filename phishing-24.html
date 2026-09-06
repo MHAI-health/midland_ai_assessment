@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>
+  // Keep the page behind Azure AD login, same as your other dashboards
+  fetch('/.auth/me')
+    .then(r => r.json())
+    .then(data => {
+      if (!data.clientPrincipal) {
+        window.location.href = '/.auth/login/aad?post_login_redirect_uri='
+          + encodeURIComponent(window.location.pathname);
+      }
+    }).catch(function(){});
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MH AI Phish Simulation Dashboard — Department Performance</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{--navy:#003B5C;--dark:#012A42;--yellow:#FFB81C;--gold:#FFD264;--green:#16A34A;--red:#E11D48;--amber:#F59E0B;--blue:#2563EB;--bg:#EDF1F7;--surface:#FFFFFF;--border:#DCE3EC;--text:#12233A;--muted:#64748B;--light:#EEF4FB;--font:'Segoe UI',system-ui,sans-serif;}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh}
+  header{background:linear-gradient(120deg,#012A42 0%,#003B5C 55%,#014E77 100%);padding:0 2rem;display:flex;align-items:center;justify-content:space-between;height:64px;position:sticky;top:0;z-index:100;box-shadow:0 4px 20px rgba(1,42,66,.35)}
+  header h1{color:#fff;font-size:18px;font-weight:800;letter-spacing:-.01em}
+  header h1 b{color:var(--yellow)}
+  header span{color:#A8C8E8;font-size:12px;font-weight:600}
+  .accent-bar{height:5px;background:linear-gradient(90deg,var(--yellow),#FFDA6A 40%,var(--yellow) 70%,#FFE9A8);box-shadow:0 2px 10px rgba(255,184,28,.5)}
+  .container{max-width:1500px;margin:0 auto;padding:1.5rem}
+  .btn{background:var(--navy);color:#fff;border:none;padding:9px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)}
+  .btn:hover{background:var(--dark)}
+  .btn.ghost{background:#fff;color:var(--navy);border:1px solid var(--border)}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.1rem 1.25rem;margin-bottom:1.25rem;box-shadow:0 2px 10px rgba(1,42,66,.05)}
+  .card h3{font-size:13px;color:var(--navy);margin-bottom:.9rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding-left:10px;border-left:4px solid var(--yellow)}
+  /* load panel */
+  #loadPanel{max-width:560px;margin:4rem auto;text-align:center}
+  #loadPanel .card{padding:2.4rem}
+  #loadPanel p{color:var(--muted);font-size:13px;margin:.6rem 0 1.4rem;line-height:1.5}
+  #loadError{display:none;color:var(--red);font-size:13px;margin-top:1rem}
+  /* kpis — executive hero tiles */
+  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:1rem;margin-bottom:1.5rem}
+  .kpi{position:relative;overflow:hidden;border-radius:16px;padding:1.15rem 1.2rem 1.2rem;background:linear-gradient(158deg,#0A4A6E 0%,#012A42 100%);color:#fff;box-shadow:0 8px 22px rgba(1,42,66,.20);border:1px solid rgba(255,255,255,.07)}
+  .kpi::before{content:"";position:absolute;top:0;left:0;right:0;height:5px;background:var(--yellow)}
+  .kpi::after{content:"";position:absolute;right:-30px;bottom:-40px;width:120px;height:120px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.10),transparent 70%)}
+  .kpi .lbl{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9FC4DE;font-weight:800}
+  .kpi .val{font-size:42px;line-height:1;font-weight:800;color:#fff;margin-top:.55rem;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+  .kpi .val.text{font-size:17px;line-height:1.2;margin-top:.7rem;letter-spacing:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .kpi .sub{font-size:11px;color:#8FB3CC;margin-top:.45rem;font-weight:600}
+  .kpi .kpi-ic{position:absolute;top:14px;right:14px;color:var(--gold);opacity:.95;z-index:1}
+  .kpi .kpi-ic svg{width:26px;height:26px;display:block}
+  .kpi.red::before{background:#FF3D57}.kpi.red .val{color:#FF7A8C}.kpi.red .kpi-ic{color:#FF7A8C}.kpi.red{box-shadow:0 8px 26px rgba(225,29,72,.30)}
+  .kpi.amber::before{background:#F59E0B}.kpi.amber .val{color:#FBBF24}.kpi.amber .kpi-ic{color:#FBBF24}
+  .kpi.green::before{background:#22C55E}.kpi.green .val{color:#4ADE80}.kpi.green .kpi-ic{color:#4ADE80}.kpi.green{box-shadow:0 8px 26px rgba(22,163,74,.22)}
+  .kpi.yellow::before{background:var(--yellow)}.kpi.yellow .val{color:var(--gold)}.kpi.yellow .kpi-ic{color:var(--gold)}
+  .kpi.navy .val{color:#8ED0FF}.kpi.navy .kpi-ic{color:#8ED0FF}.kpi.navy::before{background:#38BDF8}
+  /* charts */
+  .charts{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem}
+  .charts3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.25rem}
+  .chart-box{position:relative;height:320px}
+  .pie-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--muted);font-size:13px;font-weight:600;gap:6px;padding:1rem}
+  .pie-empty svg{width:34px;height:34px;stroke:var(--muted);fill:none;stroke-width:1.6;opacity:.7}
+  /* table */
+  .top-bar{display:flex;align-items:center;gap:.75rem;margin-bottom:1rem;flex-wrap:wrap}
+  .top-bar .grow{flex:1}
+  input[type=text],select{padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:var(--font);background:#fff}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)}
+  th{background:var(--light);color:var(--navy);font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;cursor:pointer;user-select:none;white-space:nowrap}
+  th:hover{background:#e2ecf7}
+  tbody tr:hover{background:#fafbfd}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:3px 11px;border-radius:20px;font-size:11px;font-weight:800;letter-spacing:.02em}
+  .pill.red{background:#FF3D57;color:#fff} .pill.amber{background:#F59E0B;color:#3a2600} .pill.green{background:#22C55E;color:#05330f}
+  .badge{display:inline-block;padding:3px 11px;border-radius:20px;font-size:11px;font-weight:800;letter-spacing:.02em}
+  .badge.red{background:#FF3D57;color:#fff} .badge.amber{background:#F59E0B;color:#3a2600} .badge.green{background:#22C55E;color:#05330f}
+  .tbl-wrap{overflow-x:auto;max-height:560px;overflow-y:auto}
+  .empty{text-align:center;color:var(--muted);padding:2rem;font-size:13px}
+  .snap{font-size:12px;color:var(--muted)}
+  .notif{position:fixed;bottom:20px;right:20px;background:var(--navy);color:#fff;padding:12px 18px;border-radius:8px;font-size:13px;z-index:2000;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+  .notif-green{background:var(--green)} .notif-red{background:var(--red)}
+  @media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr)}.charts{grid-template-columns:1fr}.charts3{grid-template-columns:1fr}}
+  .tabbar{display:flex;gap:6px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:4px;width:fit-content;margin-bottom:1.25rem}
+  .tabbtn{padding:8px 20px;border:none;background:transparent;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted);font-family:var(--font)}
+  .tabbtn.active{background:var(--navy);color:var(--yellow)}
+  tr.emp-row{cursor:pointer}
+  tr.emp-row:hover td{background:#F1F6FB}
+  .caret{display:inline-block;width:12px;color:var(--muted);transition:transform .15s}
+  tr.emp-row.open .caret{transform:rotate(90deg)}
+  .emp-detail td{background:#FAFCFE;padding:0}
+  .attempts{padding:10px 16px}
+  .attempts .att{display:grid;grid-template-columns:120px 1fr 160px;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px}
+  .attempts .att:last-child{border-bottom:none}
+  .st-fail{color:var(--red);font-weight:600}.st-ok{color:var(--green);font-weight:600}.st-rep{color:#0D47A1;font-weight:600}.st-neu{color:var(--muted)}
+  </style>
+</head>
+<body>
+<header>
+  <h1>Midland Health <b>·</b> AI Phishing Simulation Dashboard</h1>
+  <span>Security Awareness Program &middot; Internal Use Only</span>
+</header>
+<div class="accent-bar"></div>
+
+<!-- LOAD PANEL -->
+<div id="loadPanel" class="container">
+  <div class="card">
+    <h3 style="font-size:18px">Phishing Department Performance</h3>
+    <p>Live results from your SharePoint list, refreshed each time you upload a new Abnormal export.
+       Click below to load the latest snapshot.</p>
+    <button class="btn" onclick="loadData()">Load Latest Data</button>
+    <button class="btn ghost" onclick="loadDemoData()">Preview Demo</button>
+    <div id="loadError"></div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="mainContent" class="container" style="display:none">
+  <div class="tabbar">
+    <button id="tabDept" class="tabbtn active" onclick="switchTab('dept')">Departments</button>
+    <button id="tabEmp" class="tabbtn" onclick="switchTab('emp')">Employees</button>
+  </div>
+
+  <div id="deptView">
+  <div class="top-bar">
+    <div>
+      <div style="font-weight:700;color:var(--navy);font-size:15px">Department Standings</div>
+      <div class="snap" id="snapLabel"></div>
+    </div>
+    <div class="grow"></div>
+    <input type="text" id="search" placeholder="Search department..." oninput="renderTable()">
+    <select id="sortSel" onchange="renderTable()">
+      <option value="FailureRate-desc">Worst failure rate</option>
+      <option value="FailureRate-asc">Best failure rate</option>
+      <option value="ReportRate-desc">Best report rate</option>
+      <option value="RepeatClickers-desc">Most repeat clickers</option>
+      <option value="CompletionRate-asc">Lowest training completion</option>
+      <option value="Department-asc">Department A–Z</option>
+    </select>
+    <button class="btn ghost" onclick="loadData()">Refresh</button>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="charts">
+    <div class="card"><h3>Highest failure rate — top 12 departments</h3><div class="chart-box"><canvas id="failChart"></canvas></div></div>
+    <div class="card"><h3>Organization trend over time</h3><div class="chart-box"><canvas id="trendChart"></canvas></div></div>
+  </div>
+
+  <div class="charts">
+    <div class="card"><h3>🏆 Top performers — lowest failure rate</h3><div class="chart-box"><canvas id="topChart"></canvas></div></div>
+    <div class="card"><h3>🚩 Best reporters — highest report rate</h3><div class="chart-box"><canvas id="reporterChart"></canvas></div></div>
+  </div>
+
+  <div class="charts3">
+    <div class="card"><h3>🥧 Failures by department — all</h3>
+      <div class="chart-box"><canvas id="pieAllChart"></canvas>
+        <div class="pie-empty" id="pieAllEmpty" style="display:none"></div>
+      </div>
+    </div>
+    <div class="card"><h3>🏥 Failures by department — Midland Health</h3>
+      <div class="chart-box"><canvas id="pieMHChart"></canvas>
+        <div class="pie-empty" id="pieMHEmpty" style="display:none"></div>
+      </div>
+    </div>
+    <div class="card"><h3>🧠 Failures by department — Permian Behavioral</h3>
+      <div class="chart-box"><canvas id="piePBChart"></canvas>
+        <div class="pie-empty" id="piePBEmpty" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="improvedCard">
+    <h3>📈 Most improved — biggest drop in failure rate</h3>
+    <div id="improvedBody"></div>
+  </div>
+
+  <div class="card">
+    <h3>All departments</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th data-k="Department">Department</th>
+          <th data-k="SimsReceived" class="num">Sims</th>
+          <th data-k="FailureRate" class="num">Failure %</th>
+          <th data-k="ReportRate" class="num">Report %</th>
+          <th data-k="RepeatClickers" class="num">Repeat Clickers</th>
+          <th data-k="CompletionRate" class="num">Training %</th>
+          <th data-k="FailureRate">Risk</th>
+        </tr></thead>
+        <tbody id="deptTable"></tbody>
+      </table>
+    </div>
+  </div>
+  </div><!-- /deptView -->
+
+  <div id="empView" style="display:none">
+    <div class="top-bar">
+      <div>
+        <div style="font-weight:700;color:var(--navy);font-size:15px">Employee Detail</div>
+        <div class="snap" id="empSnapLabel"></div>
+      </div>
+      <div class="grow"></div>
+      <input type="text" id="empSearch" placeholder="Search name, email, dept..." oninput="renderEmp()">
+      <select id="empSort" onchange="renderEmp()">
+        <option value="failed-desc">Most failures</option>
+        <option value="failRate-desc">Worst failure rate</option>
+        <option value="reported-desc">Most reports</option>
+        <option value="sims-desc">Most simulations</option>
+        <option value="name-asc">Name A–Z</option>
+      </select>
+      <select id="empRisk" onchange="renderEmp()">
+        <option value="">All employees</option>
+        <option value="repeat">Repeat offenders (2+ fails)</option>
+        <option value="failedonce">Failed at least once</option>
+        <option value="clean">Never failed</option>
+      </select>
+    </div>
+
+    <div class="tabbar" style="margin-bottom:1rem">
+      <button id="grpMH" class="tabbtn active" onclick="setGroup('mh')">Midland Health</button>
+      <button id="grpPB" class="tabbtn" onclick="setGroup('pb')">Permian Behavioral</button>
+      <button id="grpAll" class="tabbtn" onclick="setGroup('all')">All</button>
+    </div>
+
+    <div class="kpis" id="empKpis"></div>
+
+    <div class="charts">
+      <div class="card"><h3>🚩 Top reporters — security champions</h3><div id="topReportersBody"></div></div>
+      <div class="card"><h3>✅ Clean streak — never failed a sim</h3><div id="cleanStreakBody"></div></div>
+    </div>
+
+    <div class="card">
+      <h3>Employees <span id="empCount" class="snap"></span></h3>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th>Employee</th>
+            <th>Department</th>
+            <th class="num">Sims</th>
+            <th class="num">Failed</th>
+            <th class="num">Reported</th>
+            <th class="num">Failure %</th>
+            <th>Latest status</th>
+          </tr></thead>
+          <tbody id="empTable"></tbody>
+        </table>
+      </div>
+      <div class="snap" style="margin-top:8px">Click any employee to expand their individual attempts over time.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG — paste your READ flow URL between the quotes below.
+   (This is the "get items" flow for the DEPARTMENT list — see the
+   setup notes I gave you. It works just like your vendor dashboard.)
+   ============================================================ */
+var PA_URL = 'https://defaultbee0e4a338e9488d9c007a89ac587f.85.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/10/workflows/c5d3980d7d8f40099136cf683cc0ffca/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=It8MIYC3lfLMMFcx9HPuAQB_Ak4syhlHIq-WcdUocsk';
+
+/* ============================================================
+   ORG MAPPING — department data has no org field, so we assign
+   departments to an org by name here.
+   Permian Behavioral has no departments yet. When it gets some,
+   add their exact department names to PB_DEPARTMENTS below and
+   they'll automatically move into the Permian pie (and out of the
+   Midland Health pie). Matching is case-insensitive and trims spaces.
+   Everything NOT listed here is treated as Midland Health.
+   ============================================================ */
+var PB_DEPARTMENTS = [
+  // 'Intake',
+  // 'Outpatient Therapy',
+];
+function orgOf(deptName){
+  var d = String(deptName||'').trim().toLowerCase();
+  for(var i=0;i<PB_DEPARTMENTS.length;i++){
+    if(String(PB_DEPARTMENTS[i]).trim().toLowerCase() === d) return 'pb';
+  }
+  return 'mh';
+}
+
+/* ---- robust field getter: handles SharePoint internal names,
+        e.g. "Snapshot_x0020_Date" still matches "snapshotdate" ---- */
+function gf(item, key){
+  var keys = Array.isArray(key) ? key : [key];
+  for(var ki=0; ki<keys.length; ki++){
+    var want = keys[ki].toLowerCase().replace(/[^a-z0-9]/g,'');
+    var k = Object.keys(item).find(function(x){
+      var norm = x.toLowerCase().replace(/_x[0-9a-f]{4}_/g,'').replace(/[^a-z0-9]/g,'');
+      return norm.indexOf(want) > -1;
+    });
+    if(k) return item[k];
+  }
+  return '';
+}
+function n(v){ if(typeof v==='number') return v; var m=String(v).replace(/,/g,'').match(/-?\d+\.?\d*/); return m?parseFloat(m[0]):0; }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+var ALL=[];      // every snapshot row
+var CURRENT=[];  // latest snapshot only
+var failChart=null, trendChart=null;
+var pieAllChart=null, pieMHChart=null, piePBChart=null;
+
+function processItems(items){
+  ALL = items.map(function(it){
+    return {
+      Department: it.Title || gf(it,'department') || '—',
+      SnapshotDate: String(gf(it,'snapshotdate')||'').slice(0,10),
+      SimsReceived: n(gf(it,['simsreceived','simsrecieved'])),
+      SimsFailed: n(gf(it,'simsfailed')),
+      FailureRate: n(gf(it,'failurerate')),
+      OverallFailureRate: n(gf(it,'overallfailurerate')),
+      SimsReported: n(gf(it,'simsreported')),
+      ReportRate: n(gf(it,'reportrate')),
+      OverallReportRate: n(gf(it,'overallreportrate')),
+      RepeatClickers: n(gf(it,'repeatclick')),
+      TrainingsAssigned: n(gf(it,['trainingsassigned','traingingsassigned'])),
+      TrainingsCompleted: n(gf(it,['trainingscompleted','traingingscompleted'])),
+      CompletionRate: n(gf(it,'completionrate')),
+      OverallCompletionRate: n(gf(it,['overallcompletionrate','overallcompletionallrate']))
+    };
+  });
+  // latest snapshot = max date
+  var dates = ALL.map(function(r){return r.SnapshotDate;}).filter(Boolean).sort();
+  var latest = dates.length ? dates[dates.length-1] : '';
+  CURRENT = latest ? ALL.filter(function(r){return r.SnapshotDate===latest;}) : ALL.slice();
+  document.getElementById('snapLabel').textContent =
+    (latest ? 'Latest snapshot: '+latest+'  ·  ' : '') + CURRENT.length + ' departments';
+  renderKpis(); renderTable(); renderFailChart(); renderTrend(); renderTopPerformers(); renderBestReporters(); renderMostImproved(); renderOrgPies();
+}
+
+function riskClass(fr){ return fr>=15?'red':fr>=5?'amber':'green'; }
+
+function kpiIcon(name){
+  var p={
+    building:'<path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16M19 21V11a1 1 0 0 0-1-1h-3M8 7h2M8 11h2M8 15h2"/>',
+    alert:'<path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17h.01"/>',
+    flag:'<path d="M4 21V4M4 4h11l-2 4 2 4H4"/>',
+    repeat:'<path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>',
+    grad:'<path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1 3 3 6 3s6-2 6-3v-5"/>',
+    target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+    users:'<path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13A4 4 0 0 1 16 11"/>',
+    activity:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+    x:'<circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/>'
+  };
+  return '<span class="kpi-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+(p[name]||p.activity)+'</svg></span>';
+}
+
+function renderKpis(){
+  var totSims = CURRENT.reduce(function(s,r){return s+r.SimsReceived;},0);
+  var totFail = CURRENT.reduce(function(s,r){return s+r.SimsFailed;},0);
+  var totRep  = CURRENT.reduce(function(s,r){return s+r.SimsReported;},0);
+  var totRepeat = CURRENT.reduce(function(s,r){return s+r.RepeatClickers;},0);
+  var orgFail = totSims?(totFail/totSims*100):0;
+  var orgRep  = totSims?(totRep/totSims*100):0;
+  var comp = CURRENT.length ? CURRENT.reduce(function(s,r){return s+r.CompletionRate;},0)/CURRENT.length : 0;
+  var cards=[
+    ['Departments', CURRENT.length, '', 'yellow', 'building'],
+    ['Org failure rate', orgFail.toFixed(1)+'%', totFail+' of '+totSims+' failed', riskClass(orgFail), 'alert'],
+    ['Org report rate', orgRep.toFixed(1)+'%', totRep+' reported', orgRep>=10?'green':'amber', 'flag'],
+    ['Repeat clickers', totRepeat, 'failed 2+ sims', totRepeat>0?'red':'green', 'repeat'],
+    ['Avg training done', comp.toFixed(0)+'%', 'across departments', comp>=80?'green':'amber', 'grad'],
+    ['Worst dept', worstDept(), 'highest failure %', 'red', 'target', 'text']
+  ];
+  document.getElementById('kpis').innerHTML = cards.map(function(c){
+    return '<div class="kpi '+c[3]+'">'+kpiIcon(c[4])+'<div class="lbl">'+c[0]+'</div><div class="val'+(c[5]==='text'?' text':'')+'">'+c[1]+'</div><div class="sub">'+c[2]+'</div></div>';
+  }).join('');
+}
+function worstDept(){
+  var w=CURRENT.filter(function(r){return r.SimsReceived>=3;}).slice().sort(function(a,b){return b.FailureRate-a.FailureRate;})[0];
+  return w? (esc(w.Department).slice(0,16)) : '—';
+}
+
+function renderTable(){
+  var q=(document.getElementById('search').value||'').toLowerCase();
+  var sv=document.getElementById('sortSel').value.split('-'); var key=sv[0], dir=sv[1];
+  var rows=CURRENT.filter(function(r){return !q || r.Department.toLowerCase().indexOf(q)>-1;});
+  rows.sort(function(a,b){
+    var x=a[key], y=b[key];
+    if(typeof x==='string'){ return dir==='asc'? x.localeCompare(y): y.localeCompare(x); }
+    return dir==='asc'? x-y : y-x;
+  });
+  var tb=document.getElementById('deptTable');
+  tb.innerHTML = rows.length ? rows.map(function(r){
+    var rc=riskClass(r.FailureRate);
+    var lbl=rc==='red'?'High':rc==='amber'?'Watch':'Good';
+    return '<tr>'+
+      '<td style="font-weight:600">'+esc(r.Department)+'</td>'+
+      '<td class="num">'+r.SimsReceived+'</td>'+
+      '<td class="num">'+r.FailureRate.toFixed(1)+'%</td>'+
+      '<td class="num">'+r.ReportRate.toFixed(1)+'%</td>'+
+      '<td class="num">'+r.RepeatClickers+'</td>'+
+      '<td class="num">'+r.CompletionRate.toFixed(0)+'%</td>'+
+      '<td><span class="pill '+rc+'">'+lbl+'</span></td>'+
+    '</tr>';
+  }).join('') : '<tr><td colspan="7" class="empty">No departments match</td></tr>';
+}
+
+function renderFailChart(){
+  var top=CURRENT.filter(function(r){return r.SimsReceived>=3;}).slice()
+            .sort(function(a,b){return b.FailureRate-a.FailureRate;}).slice(0,12);
+  var ctx=document.getElementById('failChart');
+  if(failChart) failChart.destroy();
+  failChart=new Chart(ctx,{type:'bar',
+    data:{labels:top.map(function(r){return r.Department.length>22?r.Department.slice(0,22)+'…':r.Department;}),
+      datasets:[{data:top.map(function(r){return r.FailureRate;}),
+        backgroundColor:top.map(function(r){var c=riskClass(r.FailureRate);return c==='red'?'#C62828':c==='amber'?'#E65100':'#2E7D32';})}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+c.parsed.x.toFixed(1)+'% failure rate';}}}},
+      scales:{x:{beginAtZero:true,ticks:{callback:function(v){return v+'%';},font:{size:11}}},y:{ticks:{font:{size:11}}}}}
+  });
+}
+
+var topChart=null, reporterChart=null;
+function renderTopPerformers(){
+  // lowest failure rate among departments with a meaningful number of sims
+  var top=CURRENT.filter(function(r){return r.SimsReceived>=3;}).slice()
+            .sort(function(a,b){return a.FailureRate-b.FailureRate;}).slice(0,12);
+  var ctx=document.getElementById('topChart'); if(!ctx) return;
+  if(topChart) topChart.destroy();
+  topChart=new Chart(ctx,{type:'bar',
+    data:{labels:top.map(function(r){return r.Department.length>22?r.Department.slice(0,22)+'…':r.Department;}),
+      datasets:[{data:top.map(function(r){return r.FailureRate;}),backgroundColor:'#16A34A'}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+c.parsed.x.toFixed(1)+'% failure rate';}}}},
+      scales:{x:{beginAtZero:true,ticks:{callback:function(v){return v+'%';},font:{size:11}}},y:{ticks:{font:{size:11}}}}}
+  });
+}
+function renderBestReporters(){
+  var top=CURRENT.filter(function(r){return r.SimsReceived>=3;}).slice()
+            .sort(function(a,b){return b.ReportRate-a.ReportRate;}).slice(0,12);
+  var ctx=document.getElementById('reporterChart'); if(!ctx) return;
+  if(reporterChart) reporterChart.destroy();
+  reporterChart=new Chart(ctx,{type:'bar',
+    data:{labels:top.map(function(r){return r.Department.length>22?r.Department.slice(0,22)+'…':r.Department;}),
+      datasets:[{data:top.map(function(r){return r.ReportRate;}),backgroundColor:'#2563EB'}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+c.parsed.x.toFixed(1)+'% report rate';}}}},
+      scales:{x:{beginAtZero:true,ticks:{callback:function(v){return v+'%';},font:{size:11}}},y:{ticks:{font:{size:11}}}}}
+  });
+}
+
+/* ---- Pie charts: failures (SimsFailed count) by department ---- */
+var PIE_COLORS = ['#E11D48','#F59E0B','#FFB81C','#16A34A','#2563EB','#7C3AED',
+                  '#0EA5E9','#DB2777','#059669','#EA580C','#4F46E5','#0891B2'];
+function emptyPie(msg){
+  return '<svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 2v10l7 3"/></svg><div>'+esc(msg)+'</div>';
+}
+// Build slices from a list of departments: top 10 by failures + grouped "Other".
+function pieDataFromDepts(depts){
+  var withFails = depts.filter(function(r){return r.SimsFailed>0;})
+                       .slice().sort(function(a,b){return b.SimsFailed-a.SimsFailed;});
+  var total = withFails.reduce(function(s,r){return s+r.SimsFailed;},0);
+  if(total<=0) return null;
+  var TOP=10, labels=[], values=[];
+  withFails.slice(0,TOP).forEach(function(r){
+    labels.push(r.Department.length>26?r.Department.slice(0,26)+'…':r.Department);
+    values.push(r.SimsFailed);
+  });
+  if(withFails.length>TOP){
+    var other=withFails.slice(TOP).reduce(function(s,r){return s+r.SimsFailed;},0);
+    if(other>0){ labels.push('Other ('+(withFails.length-TOP)+' depts)'); values.push(other); }
+  }
+  return {labels:labels, values:values, total:total};
+}
+function drawPie(canvasId, emptyId, chartRef, depts, emptyMsg){
+  var canvas=document.getElementById(canvasId);
+  var empty=document.getElementById(emptyId);
+  if(!canvas) return chartRef;
+  if(chartRef){ chartRef.destroy(); chartRef=null; }
+  var d = pieDataFromDepts(depts);
+  if(!d){
+    canvas.style.display='none';
+    if(empty){ empty.style.display='flex'; empty.innerHTML=emptyPie(emptyMsg); }
+    return null;
+  }
+  canvas.style.display='block';
+  if(empty) empty.style.display='none';
+  var colors=d.labels.map(function(_,i){return PIE_COLORS[i%PIE_COLORS.length];});
+  return new Chart(canvas,{type:'doughnut',
+    data:{labels:d.labels,datasets:[{data:d.values,backgroundColor:colors,borderColor:'#fff',borderWidth:1.5}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'55%',
+      plugins:{
+        legend:{position:'bottom',labels:{font:{size:10},boxWidth:12,padding:8}},
+        tooltip:{callbacks:{label:function(c){
+          var v=c.parsed, pct=d.total?(v/d.total*100):0;
+          return ' '+c.label+': '+v+' failure'+(v===1?'':'s')+' ('+pct.toFixed(1)+'%)';
+        }}}
+      }}
+  });
+}
+function renderOrgPies(){
+  var mh = CURRENT.filter(function(r){return orgOf(r.Department)==='mh';});
+  var pb = CURRENT.filter(function(r){return orgOf(r.Department)==='pb';});
+  pieAllChart = drawPie('pieAllChart','pieAllEmpty',pieAllChart,CURRENT,'No failures recorded yet');
+  pieMHChart  = drawPie('pieMHChart','pieMHEmpty',pieMHChart,mh,'No failures recorded yet');
+  piePBChart  = drawPie('piePBChart','piePBEmpty',piePBChart,pb,
+                        pb.length ? 'No failures recorded yet' : 'No departments yet');
+}
+
+function renderMostImproved(){
+  var body=document.getElementById('improvedBody'); if(!body) return;
+  var dates=Array.from(new Set(ALL.map(function(r){return r.SnapshotDate;}).filter(Boolean))).sort();
+  if(dates.length<2){
+    body.innerHTML='<div class="snap" style="padding:.5rem 0">Needs at least two snapshots to compare. This fills in automatically after your next monthly upload — each department\'s change in failure rate will show here.</div>';
+    return;
+  }
+  var first=dates[0], last=dates[dates.length-1];
+  var f={}, l={};
+  ALL.forEach(function(r){ if(r.SnapshotDate===first) f[r.Department]=r.FailureRate; if(r.SnapshotDate===last) l[r.Department]=r.FailureRate; });
+  var rows=Object.keys(l).filter(function(d){return f[d]!==undefined;}).map(function(d){
+    return {dept:d, drop:+(f[d]-l[d]).toFixed(1), from:f[d], to:l[d]};
+  }).sort(function(a,b){return b.drop-a.drop;}).slice(0,10);
+  body.innerHTML='<div class="snap" style="margin-bottom:.5rem">Comparing '+first+' → '+last+'</div>'+
+    '<div class="tbl-wrap"><table><thead><tr><th>Department</th><th class="num">'+first+'</th><th class="num">'+last+'</th><th class="num">Improvement</th></tr></thead><tbody>'+
+    rows.map(function(r){
+      var col=r.drop>0?'#16A34A':r.drop<0?'#E11D48':'var(--muted)';
+      var sign=r.drop>0?'▼ ':(r.drop<0?'▲ ':'');
+      return '<tr><td style="font-weight:600">'+esc(r.dept)+'</td><td class="num">'+r.from.toFixed(1)+'%</td><td class="num">'+r.to.toFixed(1)+'%</td><td class="num" style="color:'+col+';font-weight:700">'+sign+Math.abs(r.drop).toFixed(1)+' pts</td></tr>';
+    }).join('')+'</tbody></table></div>';
+}
+
+function renderTrend(){
+  // org-wide rates per snapshot date (uses the Overall* values, which are constant within a snapshot)
+  var byDate={};
+  ALL.forEach(function(r){
+    if(!r.SnapshotDate) return;
+    if(!byDate[r.SnapshotDate]) byDate[r.SnapshotDate]={f:r.OverallFailureRate,rp:r.OverallReportRate,cp:r.OverallCompletionRate};
+  });
+  var dates=Object.keys(byDate).sort();
+  var ctx=document.getElementById('trendChart');
+  if(trendChart) trendChart.destroy();
+  trendChart=new Chart(ctx,{type:'line',
+    data:{labels:dates,datasets:[
+      {label:'Failure %',data:dates.map(function(d){return byDate[d].f;}),borderColor:'#C62828',backgroundColor:'transparent',tension:.3},
+      {label:'Report %',data:dates.map(function(d){return byDate[d].rp;}),borderColor:'#2E7D32',backgroundColor:'transparent',tension:.3},
+      {label:'Training %',data:dates.map(function(d){return byDate[d].cp;}),borderColor:'#003B5C',backgroundColor:'transparent',tension:.3}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{font:{size:11}}}},
+      scales:{y:{beginAtZero:true,ticks:{callback:function(v){return v+'%';},font:{size:11}}},x:{ticks:{font:{size:11}}}}}
+  });
+  var box=document.getElementById('trendChart').parentElement;
+  var card=box.parentElement;
+  var existing=card.querySelector('.trendnote');
+  if(dates.length<2){
+    if(!existing){
+      var d=document.createElement('div');d.className='trendnote';
+      d.style.cssText='text-align:center;font-size:11px;color:var(--muted);margin-top:10px';
+      d.textContent='Trend builds as you upload more snapshots over time.';
+      card.appendChild(d);
+    }
+  } else if(existing){ existing.remove(); }
+}
+
+function showNotif(msg,type){var d=document.createElement('div');d.className='notif notif-'+(type||'');d.textContent=msg;document.body.appendChild(d);setTimeout(function(){d.remove();},3200);}
+
+function fetchWithTimeout(url,opts,ms){
+  var ctrl=new AbortController();
+  var t=setTimeout(function(){ctrl.abort();},ms);
+  return fetch(url,Object.assign({},opts,{signal:ctrl.signal}))
+    .then(function(r){clearTimeout(t);return r;})
+    .catch(function(e){clearTimeout(t);throw e;});
+}
+async function fetchWithRetry(url,opts,ms,retries){
+  ms=ms||55000;retries=retries||1;
+  var last;
+  for(var i=0;i<=retries;i++){
+    if(i>0){
+      showNotif('Flow timed out — retrying once…','');
+      await new Promise(function(r){setTimeout(r,3000);});
+    }
+    try{return await fetchWithTimeout(url,opts,ms);}
+    catch(e){last=e;if(e.name!=='AbortError'&&e.name!=='TypeError')throw e;}
+  }
+  throw last;
+}
+
+async function loadData(){
+  var err=document.getElementById('loadError'); err.style.display='none';
+  if(PA_URL.indexOf('PASTE_')===0){
+    err.textContent='Not connected yet: paste your read-flow URL into PA_URL near the top of the file.';
+    err.style.display='block'; return;
+  }
+  try{
+    var res=await fetchWithRetry(PA_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(!res.ok){ var et=''; try{ et=await res.text(); }catch(e){} throw new Error(res.status+' — '+et.slice(0,400)); }
+    var raw=await res.json();
+    var items=[];
+    if(Array.isArray(raw)) items=raw;
+    else if(raw.value) items=raw.value;
+    else if(raw.body&&raw.body.value) items=raw.body.value;
+    else if(raw.d&&raw.d.results) items=raw.d.results;
+    else if(typeof raw==='object'&&Object.keys(raw)[0]==='0') items=Object.values(raw);
+    if(!items.length) throw new Error('No rows returned from the list');
+    processItems(items);
+    document.getElementById('loadPanel').style.display='none';
+    document.getElementById('mainContent').style.display='block';
+    showNotif('Loaded '+CURRENT.length+' departments','green');
+  }catch(e){
+    err.textContent = e.name==='AbortError'
+      ? 'The flow timed out twice (55s each). In Power Automate, add a Response action right after your Get Items step so it returns data faster.'
+      : 'Could not load: '+e.message;
+    err.style.display='block';
+  }
+}
+
+function loadDemoData(){
+  var demo=[
+    {Title:'Emergency Dept',SnapshotDate:'2026-07-27',SimsReceived:120,SimsFailed:22,FailureRate:18.3,OverallFailureRate:8.8,SimsReported:14,ReportRate:11.7,OverallReportRate:9.2,RepeatClickers:5,TrainingsAssigned:22,TrainingsCompleted:12,CompletionRate:55,OverallCompletionRate:71},
+    {Title:'Finance',SnapshotDate:'2026-07-27',SimsReceived:64,SimsFailed:9,FailureRate:14.1,OverallFailureRate:8.8,SimsReported:10,ReportRate:15.6,OverallReportRate:9.2,RepeatClickers:2,TrainingsAssigned:9,TrainingsCompleted:8,CompletionRate:89,OverallCompletionRate:71},
+    {Title:'Radiology',SnapshotDate:'2026-07-27',SimsReceived:88,SimsFailed:6,FailureRate:6.8,OverallFailureRate:8.8,SimsReported:12,ReportRate:13.6,OverallReportRate:9.2,RepeatClickers:1,TrainingsAssigned:6,TrainingsCompleted:6,CompletionRate:100,OverallCompletionRate:71},
+    {Title:'IT',SnapshotDate:'2026-07-27',SimsReceived:40,SimsFailed:1,FailureRate:2.5,OverallFailureRate:8.8,SimsReported:9,ReportRate:22.5,OverallReportRate:9.2,RepeatClickers:0,TrainingsAssigned:1,TrainingsCompleted:1,CompletionRate:100,OverallCompletionRate:71},
+    {Title:'Nursing',SnapshotDate:'2026-07-27',SimsReceived:210,SimsFailed:31,FailureRate:14.8,OverallFailureRate:8.8,SimsReported:20,ReportRate:9.5,OverallReportRate:9.2,RepeatClickers:7,TrainingsAssigned:31,TrainingsCompleted:19,CompletionRate:61,OverallCompletionRate:71},
+    {Title:'HR',SnapshotDate:'2026-07-27',SimsReceived:30,SimsFailed:2,FailureRate:6.7,OverallFailureRate:8.8,SimsReported:5,ReportRate:16.7,OverallReportRate:9.2,RepeatClickers:0,TrainingsAssigned:2,TrainingsCompleted:2,CompletionRate:100,OverallCompletionRate:71}
+  ];
+  processItems(demo);
+  loadEmpDemo();
+  document.getElementById('loadPanel').style.display='none';
+  document.getElementById('mainContent').style.display='block';
+  showNotif('Showing demo data — click Load Latest Data for the real list','green');
+}
+
+/* ====================== EMPLOYEE VIEW ======================
+   Paste your EMPLOYEE read-flow URL here when the employee pipeline
+   is built (Phase 2). Until then, use "Preview Demo" to see the tab. */
+var EMP_URL = 'https://defaultbee0e4a338e9488d9c007a89ac587f.85.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/24/workflows/d7f716633fe5424893b1326fc0a8f878/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=rDZjJu5z308_rvYETZQAxM6J7t0Fv_-J5U8SrRJdV9c';
+
+var EMP_ATTEMPTS = [];   // one row per attempt (per snapshot)
+var EMP_AGG = [];        // aggregated per employee
+var empLoaded = false;
+var openEmp = {};        // which rows are expanded
+
+function isFail(status){ status=(status||'').toLowerCase(); return status.indexOf('fail')>-1 || status.indexOf('credential')>-1; }
+function isReport(status){ return (status||'').toLowerCase().indexOf('report')>-1; }
+
+function processEmp(items){
+  EMP_ATTEMPTS = items.map(function(it){
+    return {
+      date: String(it.SnapshotDate || gf(it,'snapshotdate') || gf(it,'sentdate') || '').slice(0,10),
+      name: it.EmployeeName || gf(it,'employeename') || gf(it,'name') || '—',
+      email: (it.EmployeeEmail || gf(it,'employeeemail') || gf(it,'email') || '').toLowerCase(),
+      dept: it.Department || gf(it,'department') || '—',
+      manager: it.Manager || gf(it,'manager') || '',
+      simType: it.SimulationType || gf(it,'simulationtype') || gf(it,'simtype') || '',
+      status: it.Status || gf(it,'status') || ''
+    };
+  }).filter(function(a){ return a.email || a.name!=='—'; });
+
+  // aggregate per employee (key = email if present else name)
+  var by = {};
+  EMP_ATTEMPTS.forEach(function(a){
+    var key = a.email || a.name;
+    if(!by[key]) by[key] = {key:key, name:a.name, email:a.email, dept:a.dept, sims:0, failed:0, reported:0, attempts:[]};
+    var e = by[key];
+    e.sims++;
+    if(isFail(a.status)) e.failed++;
+    if(isReport(a.status)) e.reported++;
+    if(a.dept && a.dept!=='—') e.dept = a.dept;
+    e.attempts.push(a);
+  });
+  EMP_AGG = Object.keys(by).map(function(k){
+    var e = by[k];
+    e.attempts.sort(function(x,y){ return (x.date<y.date)?-1:(x.date>y.date)?1:0; });
+    e.failRate = e.sims ? Math.round(e.failed/e.sims*1000)/10 : 0;
+    var last = e.attempts[e.attempts.length-1];
+    e.latest = last ? last.status : '';
+    e.group = (e.email.indexOf('permianbehavioral')>-1) ? 'pb' : 'mh';
+    return e;
+  });
+  empLoaded = true;
+  renderEmpKpis();
+  renderEmpHighlights();
+  renderEmp();
+}
+
+function renderEmpHighlights(){
+  var G = EMP_AGG.filter(inGroup);
+  // Top reporters (most reports); tiebreak fewer fails
+  var rep = G.filter(function(e){return e.reported>0;}).slice()
+             .sort(function(a,b){return (b.reported-a.reported)||(a.failed-b.failed);}).slice(0,10);
+  var rb=document.getElementById('topReportersBody');
+  if(rb){
+    rb.innerHTML = rep.length ? '<div class="tbl-wrap"><table><thead><tr><th>Employee</th><th>Department</th><th class="num">Reported</th></tr></thead><tbody>'+
+      rep.map(function(e){return '<tr><td style="font-weight:600">'+esc(e.name)+'<div class="snap">'+esc(e.email)+'</div></td><td>'+esc(e.dept)+'</td><td class="num" style="color:#2563EB;font-weight:700">'+e.reported+'</td></tr>';}).join('')+
+      '</tbody></table></div>' : '<div class="snap" style="padding:.5rem 0">No reports recorded in this group yet.</div>';
+  }
+  // Clean streak (never failed, and received at least one sim)
+  var clean = G.filter(function(e){return e.failed===0 && e.sims>0;});
+  var cb=document.getElementById('cleanStreakBody');
+  if(cb){
+    var top = clean.slice().sort(function(a,b){return (b.reported-a.reported)||(b.sims-a.sims);}).slice(0,10);
+    cb.innerHTML = '<div class="snap" style="margin-bottom:.5rem"><b style="color:#16A34A;font-size:15px">'+clean.length+'</b> people have never failed a simulation'+(G.length?(' ('+Math.round(clean.length/G.length*100)+'% of this group)'):'')+'.</div>'+
+      (top.length ? '<div class="tbl-wrap"><table><thead><tr><th>Employee</th><th>Department</th><th class="num">Sims</th><th class="num">Reported</th></tr></thead><tbody>'+
+      top.map(function(e){return '<tr><td style="font-weight:600">'+esc(e.name)+'</td><td>'+esc(e.dept)+'</td><td class="num">'+e.sims+'</td><td class="num">'+e.reported+'</td></tr>';}).join('')+
+      '</tbody></table></div>' : '');
+  }
+}
+
+function renderEmpKpis(){
+  var G = EMP_AGG.filter(inGroup);
+  var totalEmp = G.length;
+  var everFailed = G.filter(function(e){return e.failed>0;}).length;
+  var repeat = G.filter(function(e){return e.failed>=2;}).length;
+  var reporters = G.filter(function(e){return e.reported>0;}).length;
+  var totalAttempts = G.reduce(function(s,e){return s+e.sims;},0);
+  var totalFails = G.reduce(function(s,e){return s+e.failed;},0);
+  var cards=[
+    ['Employees', totalEmp, '', 'yellow', 'users'],
+    ['Ever Failed', everFailed, totalEmp?Math.round(everFailed/totalEmp*100)+'% of people':'', 'red', 'alert'],
+    ['Repeat Offenders', repeat, 'failed 2+ times', repeat>0?'red':'green', 'repeat'],
+    ['Reporters', reporters, 'reported at least once', 'green', 'flag'],
+    ['Total Attempts', totalAttempts.toLocaleString(), 'across snapshots', 'navy', 'activity'],
+    ['Total Fails', totalFails, 'all attempts', 'amber', 'x']
+  ];
+  document.getElementById('empKpis').innerHTML = cards.map(function(c){
+    return '<div class="kpi '+c[3]+'">'+kpiIcon(c[4])+'<div class="lbl">'+c[0]+'</div><div class="val">'+c[1]+'</div><div class="sub">'+c[2]+'</div></div>';
+  }).join('');
+}
+
+function empStatusClass(s){
+  if(isFail(s)) return 'st-fail';
+  if(isReport(s)) return 'st-rep';
+  if((s||'').toLowerCase().indexOf('sent')>-1) return 'st-neu';
+  return 'st-ok';
+}
+
+function renderEmp(){
+  if(!empLoaded){
+    document.getElementById('empTable').innerHTML =
+      '<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--muted)">Employee data isn\u2019t connected yet. Click <b>Preview Demo</b> to see how this tab works, or connect the employee flow (Phase 2).</td></tr>';
+    document.getElementById('empKpis').innerHTML='';
+    return;
+  }
+  var q=(document.getElementById('empSearch').value||'').toLowerCase();
+  var sort=document.getElementById('empSort').value;
+  var risk=document.getElementById('empRisk').value;
+  var rows=EMP_AGG.filter(function(e){
+    if(!inGroup(e)) return false;
+    if(q && (e.name+' '+e.email+' '+e.dept).toLowerCase().indexOf(q)<0) return false;
+    if(risk==='repeat' && e.failed<2) return false;
+    if(risk==='failedonce' && e.failed<1) return false;
+    if(risk==='clean' && e.failed>0) return false;
+    return true;
+  });
+  var sk=sort.split('-'), key=sk[0], dir=sk[1]==='asc'?1:-1;
+  rows.sort(function(a,b){
+    var x=key==='name'?a.name.toLowerCase():a[key], y=key==='name'?b.name.toLowerCase():b[key];
+    if(typeof x==='string') return x.localeCompare(y)*dir;
+    return (x-y)*dir;
+  });
+  document.getElementById('empCount').textContent = '· '+rows.length+' shown';
+
+  var html='';
+  rows.forEach(function(e){
+    var open = openEmp[e.key] ? ' open':'';
+    var riskBadge = e.failed>=2?'<span class="badge red">Repeat</span>':(e.failed>0?'<span class="badge amber">Failed</span>':'<span class="badge green">Clean</span>');
+    html += '<tr class="emp-row'+open+'" onclick="toggleEmp(\''+e.key.replace(/'/g,"\\'")+'\')">'+
+      '<td><span class="caret">\u25B6</span> <b>'+esc(e.name)+'</b><div class="snap">'+esc(e.email)+'</div></td>'+
+      '<td>'+esc(e.dept)+'</td>'+
+      '<td class="num">'+e.sims+'</td>'+
+      '<td class="num" style="color:var(--red);font-weight:600">'+e.failed+'</td>'+
+      '<td class="num">'+e.reported+'</td>'+
+      '<td class="num">'+e.failRate+'%</td>'+
+      '<td>'+riskBadge+'</td>'+
+    '</tr>';
+    if(openEmp[e.key]){
+      var atts = e.attempts.map(function(a){
+        return '<div class="att"><span>'+esc(a.date||'—')+'</span>'+
+          '<span>'+esc(a.simType||'Simulation')+'</span>'+
+          '<span class="'+empStatusClass(a.status)+'">'+esc(a.status||'—')+'</span></div>';
+      }).join('');
+      html += '<tr class="emp-detail"><td colspan="7"><div class="attempts">'+atts+'</div></td></tr>';
+    }
+  });
+  if(!rows.length) html='<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--muted)">No employees match.</td></tr>';
+  document.getElementById('empTable').innerHTML=html;
+}
+
+function toggleEmp(key){ openEmp[key]=!openEmp[key]; renderEmp(); }
+
+var empGroup = 'mh';   // 'mh' | 'pb' | 'all'
+function setGroup(g){
+  empGroup = g;
+  document.getElementById('grpMH').classList.toggle('active', g==='mh');
+  document.getElementById('grpPB').classList.toggle('active', g==='pb');
+  document.getElementById('grpAll').classList.toggle('active', g==='all');
+  openEmp = {};
+  renderEmpKpis();
+  renderEmpHighlights();
+  renderEmp();
+}
+function inGroup(e){ return empGroup==='all' ? true : e.group===empGroup; }
+
+function switchTab(which){
+  var dept=which==='dept';
+  document.getElementById('deptView').style.display=dept?'block':'none';
+  document.getElementById('empView').style.display=dept?'none':'block';
+  document.getElementById('tabDept').classList.toggle('active',dept);
+  document.getElementById('tabEmp').classList.toggle('active',!dept);
+  if(!dept && !empLoaded && EMP_URL.indexOf('PASTE_')!==0){ loadEmpData(); }
+  if(!dept) renderEmp();
+}
+
+function b64decode(b){
+  // tolerate URL-safe base64, whitespace/newlines, missing padding
+  var t=String(b).replace(/[\r\n\s]/g,'').replace(/-/g,'+').replace(/_/g,'/');
+  while(t.length%4) t+='=';
+  return decodeURIComponent(escape(atob(t)));
+}
+function tryJSON(s){ try{ return JSON.parse(s); }catch(e){ return undefined; } }
+
+function parseEmpPayload(txt){
+  if(txt==null) return [];
+  var s=String(txt).trim();
+  if(s.charCodeAt(0)===0xFEFF) s=s.slice(1);              // strip BOM
+  // strip a data-URI prefix if present (e.g. "data:application/json;base64,....")
+  var dm=s.match(/^data:[^,]*,(.*)$/s); if(dm) s=dm[1].trim();
+  if((s.startsWith('"')&&s.endsWith('"'))){                // quoted JSON string
+    var unq=tryJSON(s); if(typeof unq==='string') s=unq.trim();
+  }
+  // 1) straight JSON
+  var d=tryJSON(s);
+  if(d!==undefined){
+    if(Array.isArray(d)) return d;
+    if(d && d.$content){ var dec=tryJSON(b64decode(d.$content)); if(dec) return dec; }
+    if(d && d.value && Array.isArray(d.value)) return d.value;
+    return d;
+  }
+  // 2) $content wrapper found by regex
+  var m=s.match(/"\$content"\s*:\s*"([^"]+)"/);
+  if(m){ var w=tryJSON(b64decode(m[1])); if(w) return w; }
+  // 3) aggressive: just try base64-decoding whatever we got, then parse
+  try{ var db=b64decode(s); var pj=tryJSON(db); if(pj) return pj; }catch(e){}
+  // 4) last resort: find the first [...] or {...} block in the text and parse it
+  var jm=s.match(/[\[{][\s\S]*[\]}]/); if(jm){ var jj=tryJSON(jm[0]); if(jj) return jj; }
+  throw new Error('unrecognized data format');
+}
+
+async function loadEmpData(){
+  if(EMP_URL.indexOf('PASTE_')===0){ renderEmp(); return; }
+  try{
+    var res=await fetchWithRetry(EMP_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(!res.ok){ var et=''; try{ et=await res.text(); }catch(e){} throw new Error(res.status+' — '+et.slice(0,300)); }
+    var txt=await res.text();
+    var raw=parseEmpPayload(txt);
+    var items=[];
+    if(Array.isArray(raw)) items=raw; else if(raw&&raw.value) items=raw.value; else if(raw&&raw.body&&raw.body.value) items=raw.body.value; else if(raw&&raw.body&&Array.isArray(raw.body)) items=raw.body;
+    processEmp(items);
+  }catch(e){ document.getElementById('empTable').innerHTML='<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--red)">Could not load employee data: '+e.message+'</td></tr>'; }
+}
+
+function loadEmpDemo(){
+  var demo=[];
+  function add(name,email,dept,date,type,status){ demo.push({SnapshotDate:date,EmployeeName:name,EmployeeEmail:email,Department:dept,SimulationType:type,Status:status}); }
+  // a repeat offender improving over time
+  add('Dana Ruiz','dana.ruiz@midlandhealth.org','Nursing','2026-05-15','Package Delivery','Simulation Failed');
+  add('Dana Ruiz','dana.ruiz@midlandhealth.org','Nursing','2026-06-15','Password Reset','Credential Page Opened');
+  add('Dana Ruiz','dana.ruiz@midlandhealth.org','Nursing','2026-07-27','Invoice','Simulation Reported');
+  // a solid reporter
+  add('Marcus Webb','marcus.webb@midlandhealth.org','IT','2026-05-15','Password Reset','Simulation Reported');
+  add('Marcus Webb','marcus.webb@midlandhealth.org','IT','2026-06-15','Invoice','Simulation Reported');
+  add('Marcus Webb','marcus.webb@midlandhealth.org','IT','2026-07-27','Package Delivery','Simulation Reported');
+  // failed once then clean
+  add('Priya Shah','priya.shah@midlandhealth.org','Finance','2026-05-15','Invoice','Simulation Failed');
+  add('Priya Shah','priya.shah@midlandhealth.org','Finance','2026-06-15','Password Reset','Simulation Email Opened');
+  add('Priya Shah','priya.shah@midlandhealth.org','Finance','2026-07-27','Package Delivery','Simulation Reported');
+  // never failed
+  add('Leah Kim','leah.kim@midlandhealth.org','Radiology','2026-06-15','Invoice','Simulation Email Opened');
+  add('Leah Kim','leah.kim@midlandhealth.org','Radiology','2026-07-27','Password Reset','Simulation Sent');
+  // repeat offender not improving
+  add('Tom Alvarez','tom.alvarez@midlandhealth.org','Scheduling','2026-05-15','Invoice','Simulation Failed');
+  add('Tom Alvarez','tom.alvarez@midlandhealth.org','Scheduling','2026-06-15','Package Delivery','Simulation Failed');
+  add('Tom Alvarez','tom.alvarez@midlandhealth.org','Scheduling','2026-07-27','Password Reset','Credential Page Opened');
+  // ---- Permian Behavioral group (permianbehavioral.com) ----
+  add('Rosa Nguyen','rosa.nguyen@permianbehavioral.com','Counseling','2026-05-15','Invoice','Simulation Reported');
+  add('Rosa Nguyen','rosa.nguyen@permianbehavioral.com','Counseling','2026-07-27','Password Reset','Simulation Reported');
+  add('Devon Clark','devon.clark@permianbehavioral.com','Intake','2026-05-15','Package Delivery','Simulation Failed');
+  add('Devon Clark','devon.clark@permianbehavioral.com','Intake','2026-06-15','Invoice','Simulation Failed');
+  add('Devon Clark','devon.clark@permianbehavioral.com','Intake','2026-07-27','Password Reset','Simulation Email Opened');
+  add('Mia Torres','mia.torres@permianbehavioral.com','Admin','2026-06-15','Invoice','Simulation Sent');
+  add('Mia Torres','mia.torres@permianbehavioral.com','Admin','2026-07-27','Package Delivery','Simulation Reported');
+  processEmp(demo);
+}
+
+// sortable headers
+document.querySelectorAll('th[data-k]').forEach(function(th){
+  th.addEventListener('click',function(){
+    var k=th.getAttribute('data-k');
+    var sel=document.getElementById('sortSel');
+    var cur=sel.value.split('-');
+    sel.value = (cur[0]===k && cur[1]==='desc') ? k+'-asc' : k+'-desc';
+    if(!Array.from(sel.options).some(function(o){return o.value===sel.value;})){
+      var o=document.createElement('option');o.value=sel.value;o.textContent=k;sel.appendChild(o);
+    }
+    renderTable();
+  });
+});
+</script>
+</body>
+</html>
